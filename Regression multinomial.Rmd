@@ -1,0 +1,65 @@
+---
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Chargement des packages
+```{r}
+library(tidyverse)
+library(questionr)
+library(nnet)
+library(plotly)
+library(caret)
+library(MASS)
+library(GGally)
+library(RcmdrMisc)
+```
+
+Résumer des données 
+```{r}
+summary(India)
+```
+
+```{r}
+India <- India %>% 
+  mutate(Sex = factor(Sex),
+         EmployStatus = factor(EmployStatus),
+         Affil_FarLeft = factor(Affil_FarLeft),
+         Affil_LeftCenter = factor(Affil_LeftCenter),
+         Affil_Center = factor(Affil_Center),
+         Affil_Right = factor(Affil_Right),
+         Affil_Other = factor(Affil_Other),
+         D_Above_Median_income = factor(D_Above_Median_income))
+```
+
+
+Séparation des échantillons train et test
+```{r}
+train_idx <- createDataPartition(India$Recycling, p = 0.8, list = FALSE)
+train <- India[train_idx,]
+test  <- India[-train_idx,]
+```
+
+
+Modèle général
+```{r}
+mod_gen <- Recycling ~ .
+```
+
+Premier modèle multinomial 
+```{r}
+mod1 <- nnet::multinom(formula = mod_gen, data = India)
+coef(mod1)
+confint(mod1)
+questionr::odds.ratio(mod1)
+GGally::ggcoef_multinom(mod1, exponentiate = TRUE)
+```
+
+Sélection du meilleur modèle
+```{r}
+stepwise(mod_gen, direction = "forward/backward", criterion = "AIC", steps = 1)
+```
+
