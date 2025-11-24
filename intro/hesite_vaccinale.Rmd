@@ -124,3 +124,69 @@ Interval de confiance à 0.95
 confint.default(vaccine_mod_complet)
 ```
 
+# Sélection de modèle 
+
+Stepwise (k>15)
+Avec le critère AIC
+```{r}
+mod_step = stepwise(vaccine_mod_complet,direction="forward/backward",criterion="AIC")
+summary(mod_step)$coefficients
+ggcoef_model(mod_step, exponentiate = TRUE)
+```
+
+Avec le critère BIC
+```{r}
+mod_step_bic = stepwise(vaccine_mod_complet,direction="forward/backward",criterion="BIC")
+summary(mod_step_bic)$coefficients
+```
+
+# Prediction et performances
+```{r}
+probas = predict(mod_step,type="response")
+plot(probas~vh_data14$vaccine_hesitant,bty = "l", xlab = "Vaccine Hesitant",
+     ylab = "Probabilité estimée", cex.lab = 1.25,
+     cex.axis = 1.25, cex.main = "1.25", pch = 16,
+     main = "Probabilité d'hésitation ")
+```
+
+Matrice de confusion
+```{r}
+pred.class = ifelse(probas>=0.5,"1-Hesitant","0-non hesitant")
+confusion = table(vh_data14$vaccine_hesitant,pred.class,dnn=list("Observé","Predit"))
+confusion
+```
+
+Taux de bien classé
+```{r}
+taux_bon_classement = (2296 + 543)/3153 *100 ; taux_bon_classement
+```
+
+Sencibilité
+```{r}
+sensibilite = 543/(543+212) ; sensibilite
+```
+
+Spécificité
+```{r}
+specificite = 2296/(2296+102); specificite
+```
+
+Même chose mais avec le package caret
+```{r}
+pred.class = ifelse(probas>=0.5,"1","0") # recoder pred.class
+caret::confusionMatrix(factor(pred.class), vh_data14$vaccine_hesitant,
+                       mode="everything", positive = "1")
+```
+
+Courbe ROC
+```{r}
+pred = prediction(predictions=probas,labels=vh_data14$vaccine_hesitant)
+perf = performance(pred,measure="tpr",x.measure="fpr")
+plot(perf,lwd=2,col="blue")
+```
+
+AUC
+```{r}
+performance(pred,measure="auc")@"y.values"[[1]]
+```
+
