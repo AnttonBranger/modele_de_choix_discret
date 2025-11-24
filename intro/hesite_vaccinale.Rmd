@@ -1,0 +1,126 @@
+---
+title: "Hésitation vaccinale"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+```
+
+Chargement des packages
+```{r}
+library(tidyverse)
+library(broom)
+library (janitor)
+library(rsample)
+library(caret)
+library(ROCR)
+library(vip)
+library(pdp)
+library(ggstats)
+library(broom.helpers)
+library(RcmdrMisc)
+```
+
+Importation des données
+```{r}
+load("vh_data.Rdata")
+```
+
+```{r}
+vh_data14 %>%
+  tabyl(vaccine_hesitant)
+```
+
+qq détails sur les variables : 
+*ns index* : Natural Science Literacy which captures how scientifically literate an individual is, as we expect this to impact how they process and interpret vaccine information
+*ps index* : politically sophisticated variables that capture the chances of getting infected by modeling whether they have already been infected (Infected Personal: 0=No;1=Yes),whether someone in their immediate network has been infected (Infected Network: 0=No;1=Yes), the proportion of people in the county in which they reside that have been infected(County Cases), the proportion of people in their county that have been infected in the past two weeks(County Cases2wk), and the population density of their county(County Density)
+*Race* (1 =white;2=Black;3=Hispanic;4=other
+*Male* (0 =No;1=Yes); College Degree (1 =Yes;0=No); Household Income (1–12).      
+
+anticipate that financial and mental health-based incentives could play a large role in motivating vaccine acceptance/hesitancy.
+
+*vaccine_hesitant =0 si deja vaccine, =1 si hesitation*
+
+Convertion en facteur des variables explicatives
+```{r}
+vh_data14 <- vh_data14 %>% 
+  mutate_at(vars(condition_pregnant, condition_asthma, condition_lung, condition_diabetes,
+                 condition_immune, condition_obesity, condition_heart, condition_organ, 
+                 psindex, nsindex, college, infected_personal, infected_network, evangelical),
+            list(factor))
+```
+
+# Statistiques descriptives
+
+```{r}
+ggplot(vh_data14, aes(x=vaccine_hesitant,fill=vaccine_hesitant)) +
+  geom_bar() +
+  ggtitle("Hésitation vaccinale")
+```
+
+```{r}
+ggplot(vh_data14, aes(y=age,x=vaccine_hesitant,col=vaccine_hesitant)) +
+  geom_boxplot() +
+  ggtitle("Hésitation vaccinale selon l'âge")
+```
+
+```{r}
+ggplot(vh_data14, aes(x=male, fill=male)) + 
+  geom_bar(aes(y = after_stat(count / sum(count)))) + 
+  ggtitle("Hésitation vaccinale selon le sexe") + 
+  facet_wrap(facets = ~ vaccine_hesitant) + 
+  ylab("proportion")
+```
+
+# Régression linéaire
+
+Graine aléatoire 
+```{r}
+set.seed(1234)
+```
+
+Modèle complet
+```{r}
+vaccine_mod_complet <- glm (vaccine_hesitant ~ ., family = "binomial", 
+                            na.action = na.omit,data = vh_data14)
+summary(vaccine_mod_complet)
+```
+
+```{r}
+questionr::odds.ratio(vaccine_mod_complet)
+ggstats::ggcoef_model(vaccine_mod_complet, exponentiate = TRUE)
+```
+
+Déviance résiduelle
+```{r}
+deviance(vaccine_mod_complet)
+```
+
+Type-II Table d'analyse de la déviance 
+```{r}
+M0 <- glm(vaccine_hesitant~1, family = "binomial", na.action = na.omit,data=vh_data14)
+anova(M0,vaccine_mod_complet,test="Chisq")
+```
+
+R2 de MacFadden (privilégier le rapport de vraisemblance)
+```{r}
+PseudoR2 <- 1-vaccine_mod_complet$deviance/vaccine_mod_complet$null.deviance
+PseudoR2 
+```
+
+Wald's z-tests significativité des coef
+```{r}
+summary(vaccine_mod_complet)$coefficients
+```
+
+Interval de confiance à 0.95
+```{r}
+confint.default(vaccine_mod_complet)
+```
+
