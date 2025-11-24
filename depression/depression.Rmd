@@ -1,0 +1,138 @@
+---
+title: "Depression"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Chargement des packages
+```{r}
+library(tidyverse)
+library(lme4)
+library(ggeffects)
+library(gee)
+library(DHARMa)
+```
+
+Importation des données 
+```{r}
+dat <- read.csv("depression.csv", stringsAsFactors = TRUE)
+
+dat$id <- factor(dat$id)
+dat$drug <- relevel(dat$drug, ref = "standard")
+dat$depression <- factor(dat$depression)
+
+head(dat, n = 3)
+```
+
+
+
+Effectif par traitement 
+```{r}
+summary(dat$drug)
+```
+
+Effectif par niveau de diagnostic
+```{r}
+summary(dat$diagnose)
+```
+
+# Modèle mixe 
+
+```{r}
+dep_glmer <- glmer(depression ~ diagnose + drug * time + (1 | id), 
+                   data = dat, family = binomial)
+summary(dep_glmer, corr = FALSE)
+```
+*Interprétation* :
+**Fixed effects** :
+On laisse la variable drug dans le modèle sinon ça pose problème pour l'interprétation de l'interaction. 
+
+**Random effects** :
+coef(dep_glmer) on a les coefficients pour tous les individus. 
+Variance faible donc peu de variablilité entre les individus => pas nécessaire d'inclure les effets aléatoires. 
+
+```{r}
+plot(ggemmeans(dep_glmer, terms = c("time", "drug"), 
+               condition = c(diagnose = "severe"))) + 
+  ggplot2::ggtitle("Effet du traitement au cours du temps")
+```
+
+Evaluation du modèle
+```{r}
+chi2 <- sum(residuals(dep_glmer, type = "pearson")^2)
+1 - pchisq(chi2, df = df.residual(dep_glmer))
+chi2/df.residual(dep_glmer)
+```
+
+```{r}
+resid_sim <- simulateResiduals(dep_glmer)
+plot(resid_sim)
+```
+QQ-plot satisfaisant. 
+DHARM : 
+Points partout donc on couvre bien tous les cas. 
+
+```{r}
+re <- ranef(dep_glmer)$id
+qqnorm(re$`(Intercept)`)
+```
+
+# Approche GEE
+
+```{r}
+# Fonction QIC pour objet gee
+QIC_gee <- function(model) {
+  beta <- coef(model)
+  mu <- model$fitted.values
+  y <- model$y
+  
+  # quasi-log-likelihood binomial sous independence
+  Q <- sum(y * log(mu/(1-mu)) + log(1 - mu))  # comme approximation
+
+  # matrices variance
+  V <- model$robust.variance
+  Omega <- model$naive.variance
+
+  # QIC
+  qic <- -2 * Q + 2 * sum(diag(Omega %*% solve(V)))
+  return(qic)
+}
+```
+
+```{r}
+dep_gee_ind <- gee(depression ~ diagnose + drug * time,
+               data = dat, 
+               id = id, 
+               family = binomial,
+               corstr = "independence")
+summary(dep_gee_ind)
+QIC_gee(dep_gee_ind)
+```
+
+
+
+```{r}
+dep_gee_ex <- gee(depression ~ diagnose + drug * time,
+               data = dat, 
+               id = id, 
+               family = binomial,
+               corstr = "exchangeable")
+summary(dep_gee_ex)
+QIC_gee(dep_gee_ex)
+```
+
+```{r}
+dep_gee_ar <- gee(depression ~ diagnose + drug * time,
+               data = dat, 
+               id = id, 
+               family = binomial,
+               corstr = "AR-M")
+summary(dep_gee_ar)
+QIC_gee(dep_gee_ar)
+```
+
+On ne peut pas faire de calcul de vraisemblance car on ne sait pas la calculer. On le fait avec la fonction QIC_gee. 

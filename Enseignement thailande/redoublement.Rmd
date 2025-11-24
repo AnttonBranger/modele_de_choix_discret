@@ -1,0 +1,72 @@
+---
+title: "Redoublement thailande"
+output: html_document
+date: "2025-11-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Chargement des packages
+```{r}
+library(tidyverse)
+library(lme4)
+library(ggeffects)
+library(gee)
+library(DHARMa)
+```
+
+Importation des données 
+```{r}
+library(readr)
+redoublement <- read_delim("redoublement.csv", delim = ";", 
+                           escape_double = FALSE, trim_ws = TRUE)
+```
+
+```{r}
+summary(redoublement)
+```
+
+Transformation de certaines variables en facteur
+```{r}
+redoublement <- redoublement %>% 
+  mutate(SEX = factor(SEX),
+         REPEAT = factor(REPEAT),
+         PPED = factor(PPED)) %>% 
+  na.omit()
+summary(redoublement)
+```
+
+Statistiques descriptives
+```{r}
+boxplot(redoublement$MSESC~redoublement$REPEAT, 
+        xlab = "Redoublement",
+        ylab = "Score de l'école")
+```
+
+Modèle mixe 
+```{r}
+mod_mix <- glmer(REPEAT ~ SEX + PPED + (1 | ID) + (1 | SCHOOLID), 
+                   data = redoublement, family = binomial)
+summary(mod_mix, corr = FALSE)
+```
+
+
+```{r}
+mod_mix2 <- glmer(REPEAT ~ SEX + PPED + (1 + PPED | SCHOOLID), 
+                  data = redoublement, family = binomial)
+summary(mod_mix2, corr = FALSE)
+```
+
+```{r}
+chi2 <- sum(residuals(mod_mix2, type = "pearson")^2)
+1 - pchisq(chi2, df = df.residual(mod_mix2))
+chi2/df.residual(mod_mix2)
+```
+
+```{r}
+resid_sim <- simulateResiduals(mod_mix2)
+plot(resid_sim)
+```
+
