@@ -1,0 +1,219 @@
+---
+title: "Exercices : Démarche modèles de régression logistique"
+author: "Magalie Houée-Bigot"
+date: "Novembre 2025"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE,warning=FALSE}
+library(nnet)            # For multinomial logistic regression
+library(questionr)            # For odds-ratio
+library(aod)            # For splitbin
+library(car)            # For Anova
+library(bestglm)              # For Model Selection
+library(RcmdrMisc)              # For Stepwise Model Selection
+library(ROCR)              # For classification error rates
+#install.packages("groupdata2")   
+library(groupdata2)
+library(GGally) 
+```
+
+
+## Exercice. Déterminants de l'effort de recyclage en Inde
+
+ Une enquête environnementale a été réalisée dans plusieurs pays mais l'Inde montre un profil de réponses atypique par rapport aux autres pays. 
+On souhaite mieux comprendre l'effort de recyclage en Inde. 
+819 personnes ont participé à l'enquête. La variable d'intérêt Recycling repose sur la fréquence de l'effort de recyclage : toujours, souvent, parfois, jamais. Nous disposons également de l'âge, du sexe, du niveau scolaire, du statut d'emploi (=1 si sans emploi), de l'affiliation politique, du revenu mensuel et d'une variable indicatrice permettant de savoir si le revenu est au-dessus du revenu médian. 
+
+```{r}
+# Régression avec une variable réponse à K modalités
+
+## importation des donnnées
+load("data/India_Recycling_final.Rdata")
+# convertir en facteur les variables indicatrices 
+India <- India %>% mutate_at(vars(Sex, EmployStatus, Affil_FarLeft, Affil_LeftCenter, Affil_Center, Affil_Right, Affil_Other, D_Above_Median_income), list(factor))
+
+dim(India)       
+str(India)       
+summary(India)   
+```
+
+On cherche à prédire l'effort de recyclage à partir de toutes ces informations socio-économiques de l'enquêté.
+
+**Proposez un modèle adapté à cette problématique.** 
+
+**Estimez les paramètres du modèle de régression.**
+
+```{r}
+India$Recycling <- factor(India$Recycling, levels = c("Never", "Sometimes", "Often", "Always"))
+mod = nnet::multinom(Recycling~.,data=India, trace=FALSE)
+coef(mod)
+confint(mod)
+questionr::odds.ratio(mod)
+
+ggcoef_model(mod, exponentiate = TRUE)
+GGally::ggcoef_multinom(mod, exponentiate=TRUE)
+str(India)
+```
+
+On observe les paramètres estimés pour chaque modalité de réponse (chaque modalité de l'effort de recyclage).
+On peut constater que certaines variables n'ont pas le même effet sur l'effort de recyclage. Le niveau scolaire universitaire a un odd-ratio supérieur à 1 pour l'effort de recyclage "sometimes" et inférieur à 1 pour Often et Always par rapport à l'effort de recyclage de référence. 
+
+**Recherchez le meilleur modèle à l'aide d'un critère de performance.**
+
+
+```{r}
+select = stepwise(mod,direction="forward/backward",criterion="AIC",steps=1) # arrêt au bout d'1 étape
+```
+
+Recherche pas à pas à la fois ascendant et descendant. L'argument steps permet d'arrêter le processus à une étape particulière. 
+ici, steps =1 , le modèle nul associé a un AIc de $2164.84$.
+On visualise la liste d'efficacité de l'action (ajout d'une variable) si on ajoute le revenu, on ajoute 3 paramètres dans le modèle total (3 ddl). Le critère AIC descend à $2138.3$. on peut aussi le diminuer avec les affiliations politiques. Le meilleur modèle à 1 variable est le modèle comprenant le revenu. 
+
+
+Visualisation des résultats lors des différentes étapes 
+```{r}
+select = stepwise(mod,direction="forward/backward",criterion="AIC")
+select = stepwise(mod,direction="forward/backward",criterion="BIC")
+```
+
+Selon le critère AIC, le meilleur modèle est celui avec Income, Affil_Center, Age et Affil_Other,  et selon BIC, seules 2 variables sont retenues  (remarque : l'affichage montre AIC mais c'est bien le BIC qui est calculé)
+Le critère BIC est toujours plus parcimonieux que le critère AIC.
+
+**Calculez la proportion de bon classement (accuracy) selon les variables sélectionnées (pour les différents sous-modèles). Que pouvez-vous observer? **
+
+Mesure de la qualité de prédiction des modèles : critère accuracy(= proportion de bon classement)
+
+comment ce critère évolue en fonction du nombre de variables que l'on met dans le modèle?
+
+```{r}
+observed = India$Recycling
+
+### Accuracy values for best submodels
+acc = rep(0,11) # Initialize a vector of accuracy values
+for (k in 1:11) {
+   select = stepwise(mod,direction="forward/backward",criterion="AIC",steps=k,trace=0)
+   predictions = predict(select,type="class")
+   acc[k] = mean(predictions==observed)
+}   
+
+acc
+
+```
+on refait le stepwise en faisant varier le nombre de variables (steps=k), on effectue les prédictions à partir du modèle retenu dans le stepwise. 
+On calcule le nombre de bonne prédiction : le nombre de fois où l'effort de recyclage prédit correspond à l'effort de recyclage observé. 
+
+On peut constater que plus on ajoute de variables et meilleure est l'accuracy.
+-> sur-apprentissage 
+
+il faut faire de la validation croisée pour mesurer la proportion de bon classement. 
+
+
+```{r}
+cvacc = rep(0,11) # Initialize a vector of accuracy values
+
+folds = fold(India,k=10,cat_col="Recycling")$".folds" # crée des segments équilibrés entre les sites de production
+folds 
+# pour chaque individu, cela me donne le segment de l'individu
+
+cvpredictions = rep("Never",nrow(India)) # initialisation du vecteur des prédictions, en mettant le site de production 1 pour tout le monde
+
+for (k in 1:11) {
+   select = stepwise(mod,direction="forward/backward",criterion="AIC",steps=k,trace=0)
+   for (j in 1:10) {
+      train = India[folds!=j,]
+      test = India[folds==j,]
+      submod = multinom(formula(select),data=train,trace=FALSE) 
+      cvpredictions[folds==j] = as.character(predict(submod,newdata=test,type="class"))
+   }
+   cvacc[k] = mean(cvpredictions==India$Recycling)
+}   
+
+
+```
+
+ajustement et selection plusieurs fois 
+supperposition des accuracy obtenues précédemment et en validation croisée, forcément moins bon en validation croisée
+la sélection n'est pas dans la validation croisée (stepwise en dehors de la boucle)
+
+ pour avoir la bonne valeur de l'accuracy en validation croisée 
+
+**Calculez cette proportion en validation croisée.**
+
+Boucle sur les segments, jeu de données apprentissage et jeu de données test 
+
+- Ajustement et sélection sur le jeu de données apprentissage
+- Prédiction sur le jeu de données test
+
+```{r}
+folds = fold(India,k=10,cat_col="Recycling")$".folds" # Creation des segments
+folds 
+
+cvpredictions = rep("Never",nrow(India)) # Initialisation du vecteur de classes prédites
+
+for (j in 1:10) {
+   train = India[folds!=j,]
+   test = India[folds==j,]
+   mod = multinom(Recycling~.,data=train,trace=FALSE) 
+   select = stepwise(mod,direction="forward/backward",criterion="AIC",trace=0)
+   cvpredictions[folds==j] = as.character(predict(select,newdata=test,type="class"))
+   print(paste("Segment ",j,sep=""))
+}
+
+mean(cvpredictions==India$Recycling)
+table(cvpredictions,India$Recycling)
+
+```
+
+Remarque : commettre une erreur -mettre un individu Never ou Often-, a le même poids dans la messure de l'accuracy. Des erreurs peuvent être "plus graves" que d'autres, situation à définir selon l'expertise métier. 
+Parfois on a besoin de mettre un poids. on peut calculer une proportion différente (ie: moyenne pondérée) des accuracy par classe. 
+
+
+ex démarche : 
+Utiliser la CV pour sélectionner le meilleur modèle (par exemple, choisir le modèle qui a la meilleure performance moyenne de CV).
+
+Entraîner ce modèle sélectionné sur tout le jeu d'entraînement (ou tout le jeu India si on n'a pas mis de côté de test).
+
+Évaluer la performance finale de ce modèle sur le jeu de test externe indépendant que vous mentionnez, s'il était disponible.
+
+
+## Exercice 2. Tester un modèle logistique ordinal
+
+```{r, eval=FALSE}
+India2 <- India 
+
+India2$Recycling <- factor(India2$Recycling,levels= c("Never", "Sometimes", "Often", "Always"), ordered = TRUE)
+class(India2$Recycling)
+
+
+library(VGAM)
+
+penteseq <- vglm(Recycling ~ Income + Affil_Center + Age + Affil_Other, data=India2, cumulative(parallel=TRUE))
+
+pentesdiff <- vglm(Recycling ~ Income + Affil_Center + Age + Affil_Other, data=India2, cumulative(parallel=FALSE))
+
+# test égalité des pentes 
+lrtest_vglm(pentesdiff, penteseq)
+# on ne peut pas rejeter l'hyp d'égalité des pentes
+
+# On ne peut pas réaliser le test avec lrtest car estimation instable ou difficile pour pentes diff
+# autre solution test de Brant
+mod_po = MASS::polr(
+    Recycling ~ Income + Affil_Center + Age + Affil_Other , 
+    data = India2, 
+    Hess = TRUE 
+)
+# test de Brant (=stat du chi2 de wald sous H0)
+#Le test de Brant compare les coefficients (pentes, β) obtenus à partir d'un ensemble de régressions logistiques binaires (une pour chaque seuil ou coupure de la variable ordinale
+brant::brant(mod_po)
+#proba <0.05 rejet de H0
+
+#ici on ne peut pas faire un modele ordinal 
+```
+
