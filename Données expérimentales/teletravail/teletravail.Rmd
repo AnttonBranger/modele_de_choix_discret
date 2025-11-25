@@ -1,0 +1,49 @@
+---
+title: "Télétravail"
+output: html_document
+date: "2025-11-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Chargement des packages
+```{r}
+library(tidyverse)
+library(haven)
+library(survival)
+```
+
+Importation des données 
+```{r}
+teletravail <- read_dta("Teletravail.dta")
+```
+
+```{r}
+teletravail <- teletravail %>% 
+  mutate(male = factor(male), y39 = factor(y39), y45 = factor(y45), y51 = factor(y51), 
+         ch1 = factor(ch1), tele = factor(tele), fulltime = factor(fulltime), 
+         const = factor(const), choice = factor(choice)) %>% 
+  select(-c(female, ch3, notele, partime)) %>% 
+  filter(choice %in% c(0, 1)) %>%
+  droplevels()
+```
+
+Statistique descriptive
+```{r}
+summary(teletravail)
+```
+
+```{r}
+teletravail %>% 
+  filter(personid == 1)
+```
+
+Modèle logit conditionnel
+```{r}
+mod_cond <- clogit(choice ~ male + tele + fulltime + ch1 + y39 + y45 + y51 + const + 
+                   strata(obsid), data = teletravail)
+summary(mod_cond)
+```
+
