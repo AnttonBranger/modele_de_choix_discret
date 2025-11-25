@@ -1,0 +1,56 @@
+---
+title: "Préférence santé"
+author: "Branger Antton"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Chargement des packages
+```{r}
+library(tidyverse)
+library(haven)
+library(survival)
+```
+
+Importation des données
+```{r}
+load("DCE_sante.dta")
+DCE <- hhDCE02
+rm(hhDCE02)
+```
+
+On retient seulement les variables évoquées dans le txt
+```{r}
+DCE_final <- DCE %>% 
+  select(outcome, polite, wait, doctor, assesscare, freemed, record_id, choice_set, lchoice)
+```
+
+```{r}
+summary(DCE_final)
+```
+
+Nombre de personnes enquêtées
+```{r}
+length(unique(DCE_final$record_id))
+```
+Il y a 1 062 personnes enquêtées. 
+
+
+# Modèle conditionnel
+
+On stratifie par les individus et la liste de choix. 
+```{r}
+mod_cond <- clogit(outcome ~ strata(record_id, choice_set) + polite + wait + doctor + assesscare + freemed,
+                   data = DCE_final)
+summary(mod_cond)
+```
+Toutes les variables sont significatives au seuil de 5 % sauf la variable polite, ce qui veut dire que les patients se soucient peut de savoir si le personnel est poli ou pas. 
+En revanche, le patients ne veulent pas trop attendre avant d'être pris en charge et ils préfèrent avoir un affaire à un docteur (1,2 fois plus qu'une infirmière), un personnel médical à l'écoute et disponible (1,5 fois plus que si ce n'était pas le cas) et ils privilégient un accès au soin gratuit (1,5 fois plus que si c'était payant). 
+
+Le modèle est significativement meilleur que le modèle nul (Test de vraisemblance significatif au seuil de 5 %). 
+
+
