@@ -1,0 +1,105 @@
+---
+title: "Coloration agneau"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Chargement des packages
+```{r}
+library(tidyverse)
+```
+
+Simulation des données 
+```{r}
+# 1. Définir les effectifs et les combinaisons de facteurs
+
+# Combinaisons des facteurs (Alimentation x Logement)
+Alimentation_F1H1 <- "F1"
+Alimentation_F1H2 <- "F1"
+Alimentation_F2H1 <- "F2"
+Alimentation_F2H2 <- "F2"
+
+Logement_F1H1 <- "H1"
+Logement_F1H2 <- "H2"
+Logement_F2H1 <- "H1"
+Logement_F2H2 <- "H2"
+
+# Effectifs de Coloration = 1 (Coloré) pour chaque groupe
+C1_F1H1 <- 10
+C1_F1H2 <- 12
+C1_F2H1 <- 15
+C1_F2H2 <- 16
+
+# Effectifs de Coloration = 0 (Non-Coloré) pour chaque groupe (Total = 20)
+C0_F1H1 <- 20 - C1_F1H1 
+C0_F1H2 <- 20 - C1_F1H2 
+C0_F2H1 <- 20 - C1_F2H1 
+C0_F2H2 <- 20 - C1_F2H2 
+
+
+# 2. Créer les vecteurs pour chaque colonne du dataframe final (80 lignes)
+
+# Créer la variable ALIMENTATION
+# Répète "F1" (C1_F1H1 + C0_F1H1) fois, "F1" (C1_F1H2 + C0_F1H2) fois, etc.
+alimentation <- c(
+  rep(Alimentation_F1H1, C1_F1H1 + C0_F1H1), 
+  rep(Alimentation_F1H2, C1_F1H2 + C0_F1H2), 
+  rep(Alimentation_F2H1, C1_F2H1 + C0_F2H1), 
+  rep(Alimentation_F2H2, C1_F2H2 + C0_F2H2)  
+)
+
+# Créer la variable LOGEMENT
+logement <- c(
+  rep(Logement_F1H1, C1_F1H1 + C0_F1H1), 
+  rep(Logement_F1H2, C1_F1H2 + C0_F1H2), 
+  rep(Logement_F2H1, C1_F2H1 + C0_F2H1),
+  rep(Logement_F2H2, C1_F2H2 + C0_F2H2)  
+)
+
+# Créer la variable COLORATION (la partie la plus cruciale)
+coloration <- c(
+  # Groupe F1-H1: 10 individus '1', puis 10 individus '0'
+  rep(1, C1_F1H1), rep(0, C0_F1H1),
+  # Groupe F1-H2: 12 individus '1', puis 8 individus '0'
+  rep(1, C1_F1H2), rep(0, C0_F1H2),
+  # Groupe F2-H1: 15 individus '1', puis 5 individus '0'
+  rep(1, C1_F2H1), rep(0, C0_F2H1),
+  # Groupe F2-H2: 16 individus '1', puis 4 individus '0'
+  rep(1, C1_F2H2), rep(0, C0_F2H2)
+)
+
+
+# 3. Créer le dataframe final
+df <- data.frame(
+  Alimentation = alimentation,
+  Logement = logement,
+  Coloration = coloration
+)
+
+# Afficher les dimensions et les premières lignes pour vérification
+print(paste("Nombre total d'individus (lignes) :", nrow(df)))
+print("Aperçu du Dataframe (5 premières lignes) :")
+print(head(df))
+
+# Vérification croisée des effectifs (optionnel)
+print("Vérification des effectifs par groupe :")
+print(table(df$Alimentation, df$Logement, df$Coloration))
+
+```
+
+Modèle
+```{r}
+mod <- glm(Coloration ~ Alimentation * Logement, data = df, family = binomial)
+summary(mod)
+```
+
+```{r}
+mod2 <- glm(Coloration ~ Alimentation, data = df, family = binomial)
+coef(mod2)
+questionr::odds.ratio(mod2)
+```
+
